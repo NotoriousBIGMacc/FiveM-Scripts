@@ -1,14 +1,13 @@
 local QBCore = exports['qb-core']:GetCoreObject()
-local seatbeltOn = false
-local harnessOn = false
-local harnessHp = 20
-local harnessData = {}
+local seatbeltOn, harnessOn = false, false
+local harnessHp, harnessData = 20, {}
 
--- Ejection/crash logic variables (unchanged)
+-- Ejection logic variables (unchanged from your base)
 local handbrake, sleep, newVehBodyHealth, currVehBodyHealth, frameBodyChange = 0, 0, 0, 0, 0
 local lastFrameVehSpeed, lastFrameVehSpeed2, thisFrameVehSpeed, tick = 0, 0, 0, 0
 local damageDone, modifierDensity, lastVeh, veloc = false, true, nil, nil
 
+-- Eject logic
 local function ejectFromVehicle()
     local ped = PlayerPedId()
     local veh = GetVehiclePedIsIn(ped, false)
@@ -25,6 +24,7 @@ local function ejectFromVehicle()
     end
 end
 
+-- Toggle seatbelt
 local function toggleSeatbelt()
     seatbeltOn = not seatbeltOn
     if seatbeltOn then harnessOn = false end
@@ -34,6 +34,7 @@ local function toggleSeatbelt()
     TriggerServerEvent("InteractSound_SV:PlayWithinDistance", 5.0, seatbeltOn and "carbuckle" or "carunbuckle", 0.25)
 end
 
+-- Toggle harness with progress bar
 local function toggleHarnessWithBar()
     QBCore.Functions.Progressbar("harness_toggle", harnessOn and "Taking Off Harness" or "Putting On Harness", 2000, false, true, {
         disableMovement = false,
@@ -68,8 +69,10 @@ function SeatBeltLoop()
     end)
 end
 
+-- Export for other scripts
 exports("HasHarness", function() return harnessOn end)
 
+-- Ejection/Crash logic (unchanged)
 RegisterNetEvent('QBCore:Client:EnteredVehicle', function()
     local ped = PlayerPedId()
     while IsPedInAnyVehicle(ped, false) do
@@ -82,11 +85,7 @@ RegisterNetEvent('QBCore:Client:EnteredVehicle', function()
                 SetVehicleEngineHealth(currVehicle, 0.0)
             end
             if (GetVehicleHandbrake(currVehicle) or (GetVehicleSteeringAngle(currVehicle)) > 25.0 or (GetVehicleSteeringAngle(currVehicle)) < -25.0) then
-                if handbrake == 0 then
-                    handbrake = 100
-                else
-                    handbrake = 100
-                end
+                handbrake = 100
             end
 
             thisFrameVehSpeed = GetEntitySpeed(currVehicle) * 3.6
@@ -205,6 +204,7 @@ RegisterNetEvent('QBCore:Client:EnteredVehicle', function()
     end
 end)
 
+-- Use harness item to install into car (progress bar, then server event)
 RegisterNetEvent('seatbelt:client:UseHarness', function(ItemData, updateInfo)
     local ped = PlayerPedId()
     local inveh = IsPedInAnyVehicle(ped, false)
@@ -224,9 +224,13 @@ RegisterNetEvent('seatbelt:client:UseHarness', function(ItemData, updateInfo)
                 SeatBeltLoop()
                 QBCore.Functions.Notify("Harness engaged!", "success")
                 TriggerEvent("seatbelt:client:ToggleSeatbelt", true)
-                if updateInfo then TriggerServerEvent('equip:harness', ItemData) end
                 if updateInfo then
-                    harnessHp = ItemData.info.uses
+                    local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
+                    local plate = QBCore.Functions.GetPlate(vehicle)
+                    TriggerServerEvent('equip:harness', plate)
+                end
+                if updateInfo then
+                    harnessHp = ItemData.info.uses or 20
                     harnessData = ItemData
                     TriggerEvent('hud:client:UpdateHarness', harnessHp)
                 end
@@ -241,6 +245,7 @@ RegisterNetEvent('seatbelt:client:UseHarness', function(ItemData, updateInfo)
     end
 end)
 
+-- B key toggles harness if installed, else toggles seatbelt
 RegisterCommand('toggleseatbelt', function()
     if not IsPedInAnyVehicle(PlayerPedId(), false) or IsPauseMenuActive() then return end
     local class = GetVehicleClass(GetVehiclePedIsUsing(PlayerPedId()))
